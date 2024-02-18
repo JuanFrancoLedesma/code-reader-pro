@@ -1,9 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Person } from './entities/person.entity';
+import * as errorMessages from '../common/translations/errorMessages';
+import * as utils from '../common/utils';
 
 @Injectable()
 export class PersonService {
@@ -11,32 +13,49 @@ export class PersonService {
   constructor(
     @InjectModel("Person")
     private readonly personModel: Model<Person>,
-  ){}
+  ) { }
 
   async create(createPersonDto: CreatePersonDto) {
     try {
-      createPersonDto.name = createPersonDto.name.toLowerCase();
+      utils.propsToLowerCase(createPersonDto, ['email']);
       const person = await this.personModel.create(createPersonDto);
       return person;
-    } catch (error) {
-      throw new Error("Algo fallo")
+    } catch (e) {
+      throw new InternalServerErrorException(errorMessages.CREATE_PERSON_ERROR)
     }
-   
   }
 
-  findAll() {
-    return `This action returns all person`;
+  async findAll() {
+    const allPerson: Person[] = await this.personModel.find();
+    return allPerson;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} person`;
+  async findOne(id: string) {
+    const person: Person = await this.personModel.findById(id);
+    if (!person) {
+      throw new InternalServerErrorException(errorMessages.PERSON_NOT_FOUND);
+    }
+    return person;
   }
 
-  update(id: number, updatePersonDto: UpdatePersonDto) {
-    return `This action updates a #${id} person`;
+  async update(id: string, updatePersonDto: UpdatePersonDto) {
+    let person = await this.findOne(id);
+    utils.propsToLowerCase(updatePersonDto, ['email']);
+    await person.updateOne(updatePersonDto);
+    return {...person.toJSON(), ...updatePersonDto};
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} person`;
+  async remove(id: string) {
+    
+    const { deletedCount } = await this.personModel.deleteOne({ _id: id});
+
+    if (deletedCount === 0) {
+      throw new BadRequestException(`Person with ${id} not found`)
+    }
+
+    return;
   }
+
+
 }
+
